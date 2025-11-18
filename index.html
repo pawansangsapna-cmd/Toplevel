@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Call</title>
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+
+<style>
+    body {
+        margin:0; 
+        background:#000;
+        overflow:hidden;
+        font-family:Arial;
+    }
+
+    /* MAIN FULLSCREEN REMOTE VIDEO */
+    #remoteVideo {
+        position:absolute;
+        top:0; left:0;
+        width:100%;
+        height:100%;
+        object-fit:cover;
+        background:#000;
+    }
+
+    /* SMALL LOCAL VIDEO (PIP) */
+    #localVideo {
+        position:absolute;
+        width:120px;
+        height:170px;
+        bottom:100px;
+        right:20px;
+        border-radius:10px;
+        overflow:hidden;
+        border:2px solid #fff;
+        object-fit:cover;
+        background:#000;
+        cursor:pointer;
+    }
+
+    /* When swapped, remote becomes small */
+    .small {
+        width:120px !important;
+        height:170px !important;
+        bottom:100px !important;
+        right:20px !important;
+        border:2px solid #fff !important;
+        z-index:10 !important;
+    }
+
+    /* When swapped, local becomes fullscreen */
+    .full {
+        width:100% !important;
+        height:100% !important;
+        top:0 !important;
+        left:0 !important;
+        border:none !important;
+        z-index:1 !important;
+    }
+
+    /* CALL CONTROL BUTTONS */
+    .controls {
+        position:absolute;
+        bottom:15px;
+        width:100%;
+        display:flex;
+        justify-content:center;
+        gap:25px;
+        z-index:20;
+    }
+
+    .btn {
+        width:60px;
+        height:60px;
+        background:#20202099;
+        border-radius:50%;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        color:#fff;
+        font-size:26px;
+        cursor:pointer;
+        backdrop-filter:blur(5px);
+    }
+
+    /* END CALL BUTTON RED */
+    .end {
+        background:#ff3b30;
+    }
+</style>
+</head>
+<body>
+
+<!-- VIDEO ELEMENTS -->
+<video id="remoteVideo" autoplay></video>
+<video id="localVideo" autoplay muted></video>
+
+<!-- CONTROL BUTTONS -->
+<div class="controls">
+    <div class="btn" id="muteBtn">🎤</div>
+    <div class="btn" id="switchBtn">🔄</div>
+    <div class="btn end" id="endBtn">📞</div>
+</div>
+
+<script>
+let localStream;
+let peer;
+let currentCall;
+
+async function initCall() {
+
+    // CAMERA + MIC
+    localStream = await navigator.mediaDevices.getUserMedia({
+        video:true, audio:true
+    });
+
+    document.getElementById("localVideo").srcObject = localStream;
+
+    // RANDOM PEER ID
+    const myId = "peer-" + Math.random().toString(36).substring(2, 8);
+
+    peer = new Peer(myId, { host:"0.peerjs.com", port:443, secure:true });
+
+    peer.on("open", () => {
+        const params = new URLSearchParams(window.location.search);
+        const otherId = params.get("peer");
+
+        if (otherId && otherId !== myId) {
+            const call = peer.call(otherId, localStream);
+
+            call.on("stream", remoteStream => {
+                document.getElementById("remoteVideo").srcObject = remoteStream;
+            });
+
+            currentCall = call;
+        }
+    });
+
+    peer.on("call", call => {
+        call.answer(localStream);
+
+        call.on("stream", remoteStream => {
+            document.getElementById("remoteVideo").srcObject = remoteStream;
+        });
+
+        currentCall = call;
+    });
+}
+
+// SWAP VIDEO TAP (PIP TO FULL)
+let swapped = false;
+
+document.getElementById("localVideo").onclick = () => {
+    if (!swapped) {
+        localVideo.classList.add("full");
+        remoteVideo.classList.add("small");
+        swapped = true;
+    } else {
+        localVideo.classList.remove("full");
+        remoteVideo.classList.remove("small");
+        swapped = false;
+    }
+};
+
+// BUTTON CONTROLS
+let micOn = true;
+document.getElementById("muteBtn").onclick = () => {
+    micOn = !micOn;
+    localStream.getAudioTracks()[0].enabled = micOn;
+};
+
+document.getElementById("switchBtn").onclick = async () => {
+    if (localStream) {
+        localStream.getVideoTracks()[0].stop();
+
+        let newStream = await navigator.mediaDevices.getUserMedia({
+            video:{ facingMode: "environment" },
+            audio:true
+        });
+
+        document.getElementById("localVideo").srcObject = newStream;
+        localStream = newStream;
+    }
+};
+
+document.getElementById("endBtn").onclick = () => {
+    if (currentCall) currentCall.close();
+    window.location.href = "about:blank";
+};
+
+initCall();
+</script>
+
+</body>
+</html>
